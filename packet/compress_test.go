@@ -54,6 +54,9 @@ func TestCompress_CompressionOn(t *testing.T) {
 		b.WriteString(uuid.New().String())
 	}
 
+	// make sure we're over max allowed packet size
+	require.Greater(t, b.Len(), mysql.MaxPayloadLen)
+
 	r, err := c.Execute("INSERT INTO table (bigtextcol) VALUES (?)", b.String())
 	require.NoError(t, err)
 	id := r.InsertId
@@ -86,6 +89,9 @@ func TestCompress_CompressionOff(t *testing.T) {
 	for i := 0; i < 475000; i++ {
 		b.WriteString(uuid.New().String())
 	}
+
+	// make sure we're over max allowed packet size
+	require.Greater(t, b.Len(), mysql.MaxPayloadLen)
 
 	r, err := db.ExecContext(context.TODO(), "INSERT INTO table (bigtextcol) VALUES (?)", b.String())
 	require.NoError(t, err)
