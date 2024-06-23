@@ -9,10 +9,10 @@ A pure go library to handle MySQL network protocol and replication.
 ## How to migrate to this repo
 To change the used package in your repo it's enough to add this `replace` directive to your `go.mod`:
 ```
-replace github.com/siddontang/go-mysql => github.com/go-mysql-org/go-mysql v1.7.0
+replace github.com/siddontang/go-mysql => github.com/go-mysql-org/go-mysql v1.8.0
 ```
 
-v1.7.0 - is the last tag in repo, feel free to choose what you want.
+v1.8.0 - is the last tag in repo, feel free to choose what you want.
 
 ## Changelog
 This repo uses [Changelog](CHANGELOG.md).
@@ -359,6 +359,138 @@ func main() {
 	db.Close()
 }
 ```
+
+### Driver Options
+
+Configuration options can be provided by the standard DSN (Data Source Name).
+
+```
+[user[:password]@]addr[/db[?param=X]]
+```
+
+#### `collation`
+
+Set a collation during the Auth handshake.
+
+| Type      | Default         | Example                                               |
+| --------- | --------------- | ----------------------------------------------------- |
+| string    | utf8_general_ci | user:pass@localhost/mydb?collation=latin1_general_ci  |
+
+#### `compress`
+
+Enable compression between the client and the server. Valid values are 'zstd','zlib','uncompressed'.
+
+| Type      | Default       | Example                                 |
+| --------- | ------------- | --------------------------------------- |
+| string    | uncompressed  | user:pass@localhost/mydb?compress=zlib  |
+
+#### `readTimeout`
+
+I/O read timeout. The time unit is specified in the argument value using
+golang's [ParseDuration](https://pkg.go.dev/time#ParseDuration) format.
+
+0 means no timeout.
+
+| Type      | Default   | Example                                     |
+| --------- | --------- | ------------------------------------------- |
+| duration  | 0         | user:pass@localhost/mydb?readTimeout=10s    |
+
+#### `ssl`
+
+Enable TLS between client and server. Valid values are `true` or `custom`. When using `custom`,
+the connection will use the TLS configuration set by SetCustomTLSConfig matching the host.
+
+| Type      | Default   | Example                                     |
+| --------- | --------- | ------------------------------------------- |
+| string    |           | user:pass@localhost/mydb?ssl=true           |
+
+#### `timeout`
+
+Timeout is the maximum amount of time a dial will wait for a connect to complete.
+The time unit is specified in the argument value using golang's [ParseDuration](https://pkg.go.dev/time#ParseDuration) format.
+
+0 means no timeout.
+
+| Type      | Default   | Example                                     |
+| --------- | --------- | ------------------------------------------- |
+| duration  | 0         | user:pass@localhost/mydb?timeout=1m         |
+
+#### `writeTimeout`
+
+I/O write timeout. The time unit is specified in the argument value using
+golang's [ParseDuration](https://pkg.go.dev/time#ParseDuration) format.
+
+0 means no timeout.
+
+| Type      | Default   | Example                                         |
+| --------- | --------- | ----------------------------------------------- |
+| duration  | 0         | user:pass@localhost/mydb?writeTimeout=1m30s     |
+
+### Custom Driver Options
+
+The driver package exposes the function `SetDSNOptions`, allowing for modification of the
+connection by adding custom driver options.
+It requires a full import of the driver (not by side-effects only).
+
+Example of defining a custom option:
+
+```golang
+import (
+ "database/sql"
+
+ "github.com/go-mysql-org/go-mysql/driver"
+)
+
+func main() {
+ driver.SetDSNOptions(map[string]DriverOption{
+  "no_metadata": func(c *client.Conn, value string) error {
+   c.SetCapability(mysql.CLIENT_OPTIONAL_RESULTSET_METADATA)
+   return nil
+  },
+ })
+
+ // dsn format: "user:password@addr/dbname?"
+ dsn := "root@127.0.0.1:3306/test?no_metadata=true"
+ db, _ := sql.Open(dsn)
+ db.Close()
+}
+```
+
+### Custom NamedValueChecker
+
+Golang allows for custom handling of query arguments before they are passed to the driver
+with the implementation of a [NamedValueChecker](https://pkg.go.dev/database/sql/driver#NamedValueChecker). By doing a full import of the driver (not by side-effects only),
+a custom NamedValueChecker can be implemented.
+
+```golang
+import (
+ "database/sql"
+
+ "github.com/go-mysql-org/go-mysql/driver"
+)
+
+func main() {
+ driver.AddNamedValueChecker(func(nv *sqlDriver.NamedValue) error {
+  rv := reflect.ValueOf(nv.Value)
+  if rv.Kind() != reflect.Uint64 {
+   // fallback to the default value converter when the value is not a uint64
+   return sqlDriver.ErrSkip
+  }
+
+  return nil
+ })
+
+ conn, err := sql.Open("mysql", "root@127.0.0.1:3306/test")
+ defer conn.Close()
+
+ stmt, err := conn.Prepare("select * from table where id = ?")
+ defer stmt.Close()
+ var val uint64 = math.MaxUint64
+ // without the NamedValueChecker this query would fail
+ result, err := stmt.Query(val)
+}
+```
+
 
 We pass all tests in https://github.com/bradfitz/go-sql-test using go-mysql driver. :-)
 
